@@ -1,101 +1,137 @@
-// vk-integration.js - добавьте на azimutmap.ru
-(function() {
-    'use strict';
-    
-    // Проверяем, загружены ли мы в iframe
-    const isInIframe = window.parent !== window;
-    const isVK = navigator.userAgent.includes('VK') || 
-                 document.referrer.includes('vk.com') ||
-                 window.location.search.includes('vk=');
-    
-    if (isInIframe || isVK) {
-        console.log('AzimutMap загружен в VK Mini App');
+// Главный файл приложения
+class VKApp {
+    constructor() {
+        this.isVK = typeof vkBridge !== 'undefined';
+        this.iframe = document.getElementById('siteFrame');
+        this.loading = document.getElementById('loading');
         
-        // Адаптируем интерфейс для VK
-        adaptForVK();
-        
-        // Сообщаем о успешной загрузке
-        notifyParent();
+        this.init();
     }
     
-    function adaptForVK() {
-        // Добавляем стили для полноэкранного режима
-        const style = document.createElement('style');
-        style.textContent = `
-            /* Полноэкранный режим для VK */
-            html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                width: 100% !important;
-                height: 100% !important;
-                overflow: hidden !important;
+    async init() {
+        try {
+            // Инициализация VK Bridge
+            if (this.isVK) {
+                await vkBridge.send('VKWebAppInit');
+                console.log('VK Mini App инициализирован');
             }
             
-            /* Карта на весь экран */
-            #map, .map, [class*="map"], 
-            .map-container, .google-map {
-                width: 100vw !important;
-                height: 100vh !important;
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                border: none !important;
-            }
+            // Загружаем карту с десктопным user-agent
+            this.loadMapWithDesktopView();
             
-            /* Скрываем лишние элементы для мобильного вида */
-            @media (max-width: 768px) {
-                header, footer, .header, .footer,
-                .navbar, .ads, .advertisement {
-                    display: none !important;
-                }
-            }
-            
-            /* Улучшаем touch-взаимодействие */
-            .gm-style iframe {
-                pointer-events: auto !important;
-            }
-        `;
-        
-        document.head.appendChild(style);
-        
-        // Удаляем любые ограничения размера
-        document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
-        
-        // Перезагружаем карту если нужно
-        setTimeout(() => {
-            if (typeof google !== 'undefined' && google.maps) {
-                setTimeout(() => {
-                    window.dispatchEvent(new Event('resize'));
-                }, 1000);
-            }
-        }, 500);
+        } catch (error) {
+            console.error('Ошибка инициализации:', error);
+            this.showMap();
+        }
     }
     
-    function notifyParent() {
-        // Сообщаем родительскому окну о загрузке
-        const sendMessage = () => {
-            try {
-                window.parent.postMessage({
-                    type: 'AZIMUTMAP_LOADED',
-                    status: 'success',
-                    timestamp: Date.now(),
-                    url: window.location.href,
-                    ready: true
-                }, '*');
-            } catch (error) {
-                console.log('Не удалось отправить сообщение родителю');
-            }
+    loadMapWithDesktopView() {
+        // Создаем iframe с десктопным user-agent
+        this.setDesktopUserAgent();
+        
+        this.iframe.onload = () => {
+            console.log('Карта загружена');
+            setTimeout(() => {
+                this.showMap();
+                this.injectFullscreenCSS();
+            }, 2000);
         };
         
-        // Отправляем при загрузке и когда DOM готов
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', sendMessage);
-        } else {
-            sendMessage();
-        }
-        
-        // Также отправляем когда страница полностью загружена
-        window.addEventListener('load', sendMessage);
+        // Fallback
+        setTimeout(() => {
+            this.showMap();
+            this.injectFullscreenCSS();
+        }, 5000);
     }
-})();
+    
+    setDesktopUserAgent() {
+        // Пытаемся обмануть карты, что это десктоп
+        Object.defineProperty(navigator, 'userAgent', {
+            get: function() {
+                return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+            }
+        });
+        
+        Object.defineProperty(navigator, 'platform', {
+            get: function() {
+                return 'Win32';
+            }
+        });
+    }
+    
+    injectFullscreenCSS() {
+        // Внедряем CSS прямо в iframe для принудительного полноэкранного режима
+        try {
+            const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow.document;
+            const style = iframeDoc.createElement('style');
+            style.textContent = `
+                /* Принудительно скрываем все элементы управления Google Maps */
+                .gm-style-mtc, 
+                .gmnoprint, 
+                .gm-control-active,
+                .gm-svpc,
+                .gm-style-moc,
+                .gm-style-mot,
+                [class*="gm-"],
+                [aria-label*="карт"],
+                [aria-label*="map"],
+                [role="button"],
+                button {
+                    display: none !important;
+                    opacity: 0 !important;
+                    visibility: hidden !important;
+                    pointer-events: none !important;
+                }
+                
+                /* Основная карта на весь экран */
+                #map, 
+                [class*="map"],
+                .gm-style,
+                .gm-fullscreen,
+                body, 
+                html {
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    overflow: hidden !important;
+                }
+                
+                /* Скрываем все лишнее */
+                header, footer, nav, .header, .footer, .navbar {
+                    display: none !important;
+                }
+            `;
+            iframeDoc.head.appendChild(style);
+        } catch (e) {
+            console.log('Не удалось внедрить CSS в iframe');
+        }
+    }
+    
+    showMap() {
+        this.loading.classList.add('hidden');
+        this.iframe.classList.remove('hidden');
+        
+        // Дополнительные стили для iframe
+        this.iframe.style.width = '100vw';
+        this.iframe.style.height = '100vh';
+        this.iframe.style.position = 'fixed';
+        this.iframe.style.top = '0';
+        this.iframe.style.left = '0';
+        this.iframe.style.zIndex = '9999';
+        
+        // Фокус на iframe
+        setTimeout(() => {
+            this.iframe.focus();
+        }, 100);
+    }
+}
+
+// Инициализация приложения
+document.addEventListener('DOMContentLoaded', () => {
+    new VKApp();
+});

@@ -16,15 +16,13 @@
         </div>
     </div>
     
-    <!-- Контейнер для карты -->
-    <div id="mapContainer" class="map-container hidden">
-        <iframe id="mapFrame" class="map-frame"></iframe>
-    </div>
-
-    <!-- Кнопка перезагрузки (на случай ошибок) -->
-    <button id="reloadButton" class="reload-button hidden">
-        Обновить карту
-    </button>
+    <!-- Iframe с картой -->
+    <iframe 
+        id="siteFrame"
+        src="https://azimutmap.ru" 
+        allow="geolocation *; fullscreen *"
+        allowfullscreen
+    ></iframe>
 
     <script src="vk-app.js"></script>
 </body>

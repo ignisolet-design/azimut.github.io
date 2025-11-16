@@ -3,33 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AzimutMap - Карты и навигация</title>
+    <title>AzimutMap - Карты</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 </head>
 <body>
-    <div id="app">
-        <!-- Загрузочный экран -->
-        <div id="loading" class="loading">
-            <div class="loading-content">
-                <div class="spinner"></div>
-                <p>Загрузка путевой карты ОСД АЗИМУТ...</p>
-            </div>
+    <!-- Загрузочный экран -->
+    <div id="loading" class="loading">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Загрузка карт...</p>
         </div>
-        
-        <!-- Основной контент -->
-        <div id="content" class="content hidden">
-            <iframe 
-                id="siteFrame"
-                src="https://azimutmap.ru" 
-                allow="geolocation *; fullscreen *"
-                allowfullscreen
-            ></iframe>
-        </div>
-    
     </div>
+    
+    <!-- Iframe с картой -->
+    <iframe 
+        id="siteFrame"
+        src="https://azimutmap.ru" 
+        allow="geolocation *; fullscreen *"
+        allowfullscreen
+    ></iframe>
 
     <script src="vk-app.js"></script>
 </body>
-</html>
-

@@ -1,9 +1,19 @@
-// Главный файл приложения
 class VKApp {
     constructor() {
         this.isVK = typeof vkBridge !== 'undefined';
-        this.iframe = document.getElementById('siteFrame');
         this.loading = document.getElementById('loading');
+        this.mapContainer = document.getElementById('mapContainer');
+        this.mapFrame = document.getElementById('mapFrame');
+        this.reloadButton = document.getElementById('reloadButton');
+        
+        // Прокси серверы (можно добавить несколько для надежности)
+        this.proxyServers = [
+            'https://cors-anywhere.herokuapp.com/',
+            'https://api.codetabs.com/v1/proxy?quest=',
+            'https://corsproxy.io/?'
+        ];
+        
+        this.currentProxyIndex = 0;
         
         this.init();
     }
@@ -16,122 +26,216 @@ class VKApp {
                 console.log('VK Mini App инициализирован');
             }
             
-            // Загружаем карту с десктопным user-agent
-            this.loadMapWithDesktopView();
+            // Загружаем карту с обходом блокировки
+            await this.loadMapWithBypass();
             
         } catch (error) {
             console.error('Ошибка инициализации:', error);
-            this.showMap();
+            this.showError('Ошибка загрузки приложения');
         }
     }
     
-    loadMapWithDesktopView() {
-        // Создаем iframe с десктопным user-agent
-        this.setDesktopUserAgent();
-        
-        this.iframe.onload = () => {
-            console.log('Карта загружена');
-            setTimeout(() => {
-                this.showMap();
-                this.injectFullscreenCSS();
-            }, 2000);
-        };
-        
-        // Fallback
-        setTimeout(() => {
+    async loadMapWithBypass() {
+        try {
+            console.log('Загрузка карты с обходом блокировки...');
+            
+            // Метод 1: Пытаемся загрузить через прокси
+            const success = await this.tryProxyLoad();
+            
+            if (!success) {
+                // Метод 2: Пытаемся загрузить напрямую с измененными параметрами
+                await this.tryDirectLoad();
+            }
+            
+        } catch (error) {
+            console.error('Все методы загрузки не удались:', error);
+            this.showError('Не удалось загрузить карты');
+        }
+    }
+    
+    async tryProxyLoad() {
+        try {
+            const proxyUrl = this.proxyServers[this.currentProxyIndex];
+            const targetUrl = 'https://azimutmap.ru';
+            
+            console.log(`Попытка загрузки через прокси: ${proxyUrl}`);
+            
+            // Создаем iframe с проксированным URL
+            this.mapFrame.src = proxyUrl + targetUrl;
+            
+            // Ждем загрузки
+            await this.waitForFrameLoad(this.mapFrame);
+            
             this.showMap();
-            this.injectFullscreenCSS();
+            return true;
+            
+        } catch (error) {
+            console.log(`Прокси ${this.currentProxyIndex} не сработал:`, error);
+            
+            // Пробуем следующий прокси
+            this.currentProxyIndex++;
+            if (this.currentProxyIndex < this.proxyServers.length) {
+                return await this.tryProxyLoad();
+            }
+            
+            return false;
+        }
+    }
+    
+    async tryDirectLoad() {
+        try {
+            console.log('Попытка прямой загрузки с обходом ограничений...');
+            
+            // Создаем iframe с вашим сайтом
+            this.mapFrame.src = 'https://azimutmap.ru';
+            
+            // Добавляем обработчики для обхода ограничений
+            this.addBypassHandlers();
+            
+            // Ждем загрузки с таймаутом
+            await Promise.race([
+                this.waitForFrameLoad(this.mapFrame),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout')), 10000)
+                )
+            ]);
+            
+            this.showMap();
+            return true;
+            
+        } catch (error) {
+            console.log('Прямая загрузка не удалась:', error);
+            throw error;
+        }
+    }
+    
+    addBypassHandlers() {
+        // Перехватываем сообщения об ошибках
+        window.addEventListener('error', (event) => {
+            if (event.target === this.mapFrame) {
+                console.log('Ошибка в iframe:', event);
+            }
+        });
+        
+        // Обрабатываем сообщения от iframe
+        window.addEventListener('message', (event) => {
+            if (event.source === this.mapFrame.contentWindow) {
+                this.handleFrameMessage(event);
+            }
+        });
+        
+        // Периодически проверяем статус iframe
+        this.startFrameHealthCheck();
+    }
+    
+    handleFrameMessage(event) {
+        console.log('Сообщение от iframe:', event.data);
+        
+        // Если iframe сообщает о блокировке, пробуем другой метод
+        if (event.data && event.data.type === 'BLOCKED') {
+            this.retryWithDifferentMethod();
+        }
+    }
+    
+    startFrameHealthCheck() {
+        // Периодически проверяем, не заблокирован ли iframe
+        const healthCheck = setInterval(() => {
+            try {
+                // Пытаемся получить доступ к содержимому iframe
+                if (this.mapFrame.contentWindow && 
+                    this.mapFrame.contentWindow.location.href) {
+                    // Iframe доступен
+                    console.log('Iframe health: OK');
+                }
+            } catch (error) {
+                // Iframe заблокирован
+                console.log('Iframe заблокирован:', error);
+                clearInterval(healthCheck);
+                this.retryWithDifferentMethod();
+            }
         }, 5000);
     }
     
-    setDesktopUserAgent() {
-        // Пытаемся обмануть карты, что это десктоп
-        Object.defineProperty(navigator, 'userAgent', {
-            get: function() {
-                return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
-            }
-        });
+    async retryWithDifferentMethod() {
+        console.log('Повторная попытка загрузки другим методом...');
         
-        Object.defineProperty(navigator, 'platform', {
-            get: function() {
-                return 'Win32';
-            }
-        });
+        // Показываем кнопку перезагрузки
+        this.reloadButton.classList.remove('hidden');
+        
+        // Обработчик кнопки перезагрузки
+        this.reloadButton.onclick = () => {
+            this.reloadButton.classList.add('hidden');
+            this.loadMapWithBypass();
+        };
     }
     
-    injectFullscreenCSS() {
-        // Внедряем CSS прямо в iframe для принудительного полноэкранного режима
-        try {
-            const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow.document;
-            const style = iframeDoc.createElement('style');
-            style.textContent = `
-                /* Принудительно скрываем все элементы управления Google Maps */
-                .gm-style-mtc, 
-                .gmnoprint, 
-                .gm-control-active,
-                .gm-svpc,
-                .gm-style-moc,
-                .gm-style-mot,
-                [class*="gm-"],
-                [aria-label*="карт"],
-                [aria-label*="map"],
-                [role="button"],
-                button {
-                    display: none !important;
-                    opacity: 0 !important;
-                    visibility: hidden !important;
-                    pointer-events: none !important;
-                }
-                
-                /* Основная карта на весь экран */
-                #map, 
-                [class*="map"],
-                .gm-style,
-                .gm-fullscreen,
-                body, 
-                html {
-                    position: fixed !important;
-                    top: 0 !important;
-                    left: 0 !important;
-                    width: 100vw !important;
-                    height: 100vh !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    border: none !important;
-                    overflow: hidden !important;
-                }
-                
-                /* Скрываем все лишнее */
-                header, footer, nav, .header, .footer, .navbar {
-                    display: none !important;
-                }
-            `;
-            iframeDoc.head.appendChild(style);
-        } catch (e) {
-            console.log('Не удалось внедрить CSS в iframe');
-        }
+    waitForFrameLoad(frame) {
+        return new Promise((resolve, reject) => {
+            const onLoad = () => {
+                frame.removeEventListener('load', onLoad);
+                frame.removeEventListener('error', onError);
+                resolve();
+            };
+            
+            const onError = () => {
+                frame.removeEventListener('load', onLoad);
+                frame.removeEventListener('error', onError);
+                reject(new Error('Frame load error'));
+            };
+            
+            frame.addEventListener('load', onLoad);
+            frame.addEventListener('error', onError);
+            
+            // Если iframe уже загружен
+            if (frame.contentDocument && frame.contentDocument.readyState === 'complete') {
+                resolve();
+            }
+        });
     }
     
     showMap() {
+        console.log('Показываем карту...');
         this.loading.classList.add('hidden');
-        this.iframe.classList.remove('hidden');
+        this.mapContainer.classList.remove('hidden');
+        this.reloadButton.classList.add('hidden');
         
-        // Дополнительные стили для iframe
-        this.iframe.style.width = '100vw';
-        this.iframe.style.height = '100vh';
-        this.iframe.style.position = 'fixed';
-        this.iframe.style.top = '0';
-        this.iframe.style.left = '0';
-        this.iframe.style.zIndex = '9999';
-        
-        // Фокус на iframe
+        // Фокус на iframe для работы с картой
         setTimeout(() => {
-            this.iframe.focus();
-        }, 100);
+            try {
+                this.mapFrame.focus();
+            } catch (error) {
+                console.log('Не удалось установить фокус на iframe');
+            }
+        }, 1000);
+    }
+    
+    showError(message) {
+        this.loading.classList.add('hidden');
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.innerHTML = `
+            <div class="error-content">
+                <h3>Ошибка</h3>
+                <p>${message}</p>
+                <button onclick="location.reload()">Перезагрузить</button>
+            </div>
+        `;
+        
+        document.body.appendChild(errorDiv);
     }
 }
 
 // Инициализация приложения
 document.addEventListener('DOMContentLoaded', () => {
     new VKApp();
+});
+
+// Глобальные обработчики ошибок
+window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
 });

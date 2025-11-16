@@ -1,0 +1,9 @@
+{
+    "url": "https://your-username.github.io/vk-mini-app/",
+    "name": "AzimutMap",
+    "icon": "https://your-username.github.io/vk-mini-app/icon.png",
+    "description": "Интерактивные карты и навигация",
+    "redirect_uri": "https://your-username.github.io/vk-mini-app/auth.html",
+    "scope": "friends,photos,wall,groups",
+    "open_in_full_screen": true
+}
